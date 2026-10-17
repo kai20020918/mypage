@@ -1,5 +1,10 @@
 name: Deploy to ConoHa WING
 
+# WING は海外（GitHub Actions）からの SSH ログインを受け付けないため、
+# 日本にある ConoHa VPS を中継して送る:  GitHub Actions → VPS → WING
+#   - VPS の設定は .github/scripts/vps-setup.sh（README 参照）
+#   - WING の鍵と接続情報は VPS 側にだけ置く（GitHub には置かない）
+
 on:
   push:
     branches: [main]
@@ -22,15 +27,19 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_PORT: ${{ vars.VPS_PORT || '22' }}
     steps:
       # Secrets がまだ登録されていなければ、失敗にせずスキップする
       - name: Check secrets
         id: check
         env:
-          OK: ${{ secrets.WING_SSH_KEY != '' && secrets.WING_HOST != '' && secrets.WING_USER != '' && secrets.WING_PATH != '' }}
+          OK: ${{ secrets.VPS_SSH_KEY != '' && secrets.VPS_HOST != '' && secrets.VPS_USER != '' }}
         run: |
           echo "configured=$OK" >> "$GITHUB_OUTPUT"
-          [ "$OK" = "true" ] || echo "::warning::WING_* の Secrets が未登録のため、デプロイをスキップしました"
+          [ "$OK" = "true" ] || echo "::warning::VPS_* の Secrets が未登録のため、デプロイをスキップしました"
 
       - uses: actions/checkout@v5
         if: steps.check.outputs.configured == 'true'
@@ -43,41 +52,41 @@ jobs:
           find . -name '*.html' -not -path './.git/*' -print0 \
             | xargs -0 sed -i -E "s/\?v=[0-9A-Za-z_-]+/?v=${ver}/g"
 
-      - name: Set up SSH
+      - name: Set up SSH (to VPS)
         if: steps.check.outputs.configured == 'true'
         env:
-          WING_SSH_KEY: ${{ secrets.WING_SSH_KEY }}
-          WING_KNOWN_HOSTS: ${{ secrets.WING_KNOWN_HOSTS }}
-          WING_HOST: ${{ secrets.WING_HOST }}
-          WING_PORT: ${{ vars.WING_PORT || '8022' }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
         run: |
           install -m 700 -d ~/.ssh
-          printf '%s\n' "$WING_SSH_KEY" | tr -d '\r' > ~/.ssh/wing_key
-          chmod 600 ~/.ssh/wing_key
-          # 鍵として読めるか確認（中身は表示しない。1行目の種類と行数だけ出す）
-          if ! ssh-keygen -y -f ~/.ssh/wing_key > /dev/null 2>&1; then
-            echo "1行目: $(head -n1 ~/.ssh/wing_key | cut -c1-40)"
-            echo "最終行: $(tail -n1 ~/.ssh/wing_key | cut -c1-40)"
-            echo "行数: $(wc -l < ~/.ssh/wing_key)"
-            echo "::error::WING_SSH_KEY を秘密鍵として読み込めません。BEGIN〜END の行を含め、改行を保ったまま全体を登録し直してください"
+          printf '%s\n' "$VPS_SSH_KEY" | tr -d '\r' > ~/.ssh/vps_key
+          chmod 600 ~/.ssh/vps_key
+          if ! ssh-keygen -y -f ~/.ssh/vps_key > /dev/null 2>&1; then
+            echo "::error::VPS_SSH_KEY を秘密鍵として読み込めません。BEGIN〜END の行を含め、改行を保ったまま登録し直してください"
             exit 1
           fi
-          if [ -n "$WING_KNOWN_HOSTS" ]; then
-            printf '%s\n' "$WING_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          if [ -n "$VPS_KNOWN_HOSTS" ]; then
+            printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
           else
-            ssh-keyscan -p "$WING_PORT" "$WING_HOST" > ~/.ssh/known_hosts 2>/dev/null
+            ssh-keyscan -p "$VPS_PORT" "$VPS_HOST" > ~/.ssh/known_hosts 2>/dev/null
           fi
 
-      - name: Deploy (rsync)
+      - name: Upload to VPS (staging)
+        if: steps.check.outputs.configured == 'true'
+        run: |
+          rsync -rlptz --delete --exclude='.git' \
+            -e "ssh -p $VPS_PORT -i $HOME/.ssh/vps_key -o StrictHostKeyChecking=yes -o BatchMode=yes" \
+            ./ "$VPS_USER@$VPS_HOST:portfolio-stage/"
+
+      - name: Deploy VPS → WING (rsync)
         if: steps.check.outputs.configured == 'true'
         env:
-          WING_HOST: ${{ secrets.WING_HOST }}
-          WING_USER: ${{ secrets.WING_USER }}
-          WING_PATH: ${{ secrets.WING_PATH }}
-          WING_PORT: ${{ vars.WING_PORT || '8022' }}
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
-        run: bash .github/scripts/deploy.sh
+        run: |
+          ssh -p "$VPS_PORT" -i ~/.ssh/vps_key -o StrictHostKeyChecking=yes -o BatchMode=yes \
+            "$VPS_USER@$VPS_HOST" \
+            "set -a; . ~/.config/wing-deploy.env; set +a; DRY_RUN=$DRY_RUN bash ~/portfolio-stage/.github/scripts/deploy.sh"
 
       - name: Clean up key
         if: always()
-        run: rm -f ~/.ssh/wing_key
+        run: rm -f ~/.ssh/vps_key

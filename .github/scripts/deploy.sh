@@ -48,7 +48,12 @@ else
 fi
 
 echo "== 直下のファイル（削除なし）"
-rsync "${OPTS[@]}" --exclude='*/' ./ "$DEST/"
+# ファイルを個別に渡す（"./" を渡すと公開フォルダ自体の権限まで書き換えてしまうため）
+files=()
+for f in *; do
+  [[ -f "$f" && "$f" != "README.md" ]] && files+=("$f")
+done
+(( ${#files[@]} )) && rsync "${OPTS[@]}" "${files[@]}" "$DEST/"
 
 for dir in */; do
   dir="${dir%/}"
