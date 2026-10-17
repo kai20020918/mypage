@@ -43,7 +43,7 @@ Actions → **Deploy to ConoHa WING** → **Run workflow**。
 | `WING_SSH_KEY` | `-----BEGIN ... PRIVATE KEY-----` … | WING で作った SSH の秘密鍵（ファイルの中身すべて） |
 | `WING_HOST` | `www123.conoha.ne.jp` | WING の SSH 接続情報のホスト名 |
 | `WING_USER` | `c1234567` | WING の SSH 接続情報のユーザー名 |
-| `WING_PATH` | `/home/c1234567/public_html/example.com` | サイトの公開フォルダ（`.../public_html/<ドメイン>` の形） |
+| `WING_PATH` | `public_html/cafe-web.com` | サイトの公開フォルダ（ホームからの相対パス） |
 | `WING_KNOWN_HOSTS`（任意） | | 設定するとサーバーの鍵を固定して検証します。未設定なら実行時に取得 |
 
 SSH のポートは 8022 を使います（変える場合は Variables に `WING_PORT` を追加）。

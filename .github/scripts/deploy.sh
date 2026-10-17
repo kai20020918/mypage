@@ -25,9 +25,11 @@ if [[ -n "${RSYNC_DEST:-}" ]]; then
 else
   : "${WING_HOST:?}" "${WING_USER:?}" "${WING_PATH:?}" 
   # 誤って public_html 全体やホームを指定しないよう、公開ディレクトリ配下だけ許可
+  # （相対パスはホームディレクトリから。例: public_html/example.com）
   case "$WING_PATH" in
-    */public_html/?*) ;;
-    *) echo "::error::WING_PATH は .../public_html/<ドメイン> の形にしてください: $WING_PATH"; exit 1 ;;
+    *..*) echo "::error::WING_PATH に .. は使えません"; exit 1 ;;
+    public_html/?*|*/public_html/?*) ;;
+    *) echo "::error::WING_PATH は public_html/<ドメイン> の形にしてください: $WING_PATH"; exit 1 ;;
   esac
   SSH_KEY_FILE="${SSH_KEY_FILE:-$HOME/.ssh/wing_key}"
   OPTS+=(-e "ssh -p ${WING_PORT:-8022} -i $SSH_KEY_FILE -o StrictHostKeyChecking=yes -o BatchMode=yes")
