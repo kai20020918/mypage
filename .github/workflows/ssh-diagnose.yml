@@ -39,7 +39,7 @@ jobs:
           try() {  # $1=鍵 $2=ラベル
             out=$(ssh -p "$WING_PORT" -i "$1" -o IdentitiesOnly=yes -o BatchMode=yes \
                   -o StrictHostKeyChecking=yes -o ConnectTimeout=20 \
-                  "$WING_USER@$WING_HOST" 'echo LOGIN_OK' 2>&1)
+                  "$WING_USER@$WING_HOST" 'echo LOGIN_OK' 2>&1) || true
             case "$out" in
               *LOGIN_OK*)            r="ログイン成功" ;;
               *"Permission denied"*) r="鍵を拒否された（Permission denied）" ;;
