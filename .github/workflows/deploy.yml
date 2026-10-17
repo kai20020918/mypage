@@ -58,6 +58,7 @@ jobs:
           VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
           VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
         run: |
+          echo "GitHub 側の接続元 IP: $(curl -s --max-time 5 https://ipinfo.io/ip || echo 不明)"
           install -m 700 -d ~/.ssh
           printf '%s\n' "$VPS_SSH_KEY" | tr -d '\r' > ~/.ssh/vps_key
           chmod 600 ~/.ssh/vps_key
@@ -68,7 +69,15 @@ jobs:
           if [ -n "$VPS_KNOWN_HOSTS" ]; then
             printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
           else
-            ssh-keyscan -p "$VPS_PORT" "$VPS_HOST" > ~/.ssh/known_hosts 2>/dev/null
+            # GitHub（海外）から VPS の SSH ポートに届くか確認してから、サーバー鍵を取得する
+            if ! timeout 15 bash -c "exec 3<>/dev/tcp/$VPS_HOST/$VPS_PORT" 2>/dev/null; then
+              echo "::error::GitHub から VPS の ${VPS_PORT} 番ポートに接続できません。VPS_HOST（IPアドレス）、SSH のポート番号（22以外なら Variables に VPS_PORT）、ConoHa のセキュリティグループや ufw で海外からの SSH を遮断していないかを確認してください"
+              exit 1
+            fi
+            if ! ssh-keyscan -T 15 -p "$VPS_PORT" "$VPS_HOST" > ~/.ssh/known_hosts 2>/dev/null || [ ! -s ~/.ssh/known_hosts ]; then
+              echo "::error::VPS のサーバー鍵を取得できませんでした（ポートは開いていますが SSH が応答しません）"
+              exit 1
+            fi
           fi
 
       - name: Upload to VPS (staging)
