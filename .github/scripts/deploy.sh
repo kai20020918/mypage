@@ -32,8 +32,19 @@ else
     *) echo "::error::WING_PATH は public_html/<ドメイン> の形にしてください: $WING_PATH"; exit 1 ;;
   esac
   SSH_KEY_FILE="${SSH_KEY_FILE:-$HOME/.ssh/wing_key}"
-  OPTS+=(-e "ssh -p ${WING_PORT:-8022} -i $SSH_KEY_FILE -o StrictHostKeyChecking=yes -o BatchMode=yes")
+  SSH_CMD="ssh -p ${WING_PORT:-8022} -i $SSH_KEY_FILE -o StrictHostKeyChecking=yes -o BatchMode=yes -o ConnectTimeout=20"
+  OPTS+=(-e "$SSH_CMD")
   DEST="${WING_USER}@${WING_HOST}:${WING_PATH%/}"
+
+  # 先に SSH だけで接続を確かめる。失敗したら詳しいログを出して止める
+  echo "== SSH 接続テスト"
+  if ! $SSH_CMD "${WING_USER}@${WING_HOST}" "test -d '${WING_PATH%/}' && echo 'OK: 公開フォルダが見つかりました' || { echo 'NG: 公開フォルダがありません'; exit 3; }"; then
+    echo "::group::ssh -v の詳細ログ"
+    $SSH_CMD -v "${WING_USER}@${WING_HOST}" true 2>&1 | grep -v -E '^debug1: (Reading|/etc/ssh)' || true
+    echo "::endgroup::"
+    echo "::error::SSH 接続に失敗しました（上の詳細ログを確認してください）"
+    exit 1
+  fi
 fi
 
 echo "== 直下のファイル（削除なし）"
