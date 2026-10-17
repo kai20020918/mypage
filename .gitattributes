@@ -1,0 +1,10 @@
+# サーバー（Linux）と揃えるため改行は LF に統一
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.woff binary
+*.woff2 binary

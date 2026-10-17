@@ -1,0 +1,75 @@
+name: Deploy to ConoHa WING
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "確認だけ（サーバーを変更しない）"
+        type: boolean
+        default: true
+
+# 同時に2つのデプロイが走らないようにする
+concurrency:
+  group: deploy-wing
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # Secrets がまだ登録されていなければ、失敗にせずスキップする
+      - name: Check secrets
+        id: check
+        env:
+          OK: ${{ secrets.WING_SSH_KEY != '' && secrets.WING_HOST != '' && secrets.WING_USER != '' && secrets.WING_PATH != '' }}
+        run: |
+          echo "configured=$OK" >> "$GITHUB_OUTPUT"
+          [ "$OK" = "true" ] || echo "::warning::WING_* の Secrets が未登録のため、デプロイをスキップしました"
+
+      - uses: actions/checkout@v5
+        if: steps.check.outputs.configured == 'true'
+
+      # css/js の ?v=... をコミットIDに置き換え、ブラウザの古いキャッシュを使わせない
+      - name: Update cache-busting versions
+        if: steps.check.outputs.configured == 'true'
+        run: |
+          ver="${GITHUB_SHA::7}"
+          find . -name '*.html' -not -path './.git/*' -print0 \
+            | xargs -0 sed -i -E "s/\?v=[0-9A-Za-z_-]+/?v=${ver}/g"
+
+      - name: Set up SSH
+        if: steps.check.outputs.configured == 'true'
+        env:
+          WING_SSH_KEY: ${{ secrets.WING_SSH_KEY }}
+          WING_KNOWN_HOSTS: ${{ secrets.WING_KNOWN_HOSTS }}
+          WING_HOST: ${{ secrets.WING_HOST }}
+          WING_PORT: ${{ vars.WING_PORT || '8022' }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$WING_SSH_KEY" | tr -d '\r' > ~/.ssh/wing_key
+          chmod 600 ~/.ssh/wing_key
+          if [ -n "$WING_KNOWN_HOSTS" ]; then
+            printf '%s\n' "$WING_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -p "$WING_PORT" "$WING_HOST" > ~/.ssh/known_hosts 2>/dev/null
+          fi
+
+      - name: Deploy (rsync)
+        if: steps.check.outputs.configured == 'true'
+        env:
+          WING_HOST: ${{ secrets.WING_HOST }}
+          WING_USER: ${{ secrets.WING_USER }}
+          WING_PATH: ${{ secrets.WING_PATH }}
+          WING_PORT: ${{ vars.WING_PORT || '8022' }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        run: bash .github/scripts/deploy.sh
+
+      - name: Clean up key
+        if: always()
+        run: rm -f ~/.ssh/wing_key

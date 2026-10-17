@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#09090b">
+<meta name="description" content="スプラトゥーン3向けDiscordブキルーレットBotの開発記録。Windows・TypeScriptでの実装から、ConoHa VPSのUbuntuとsystemdによる常時稼働まで。">
+<title>ブキルーレットBot 開発記録 | My Portfolio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/style.css?v=20261002">
+<link rel="stylesheet" href="../css/roulette-story.css?v=20261002">
+</head>
+<body class="story-page">
+<a class="skip-link" href="#article">本文へ移動</a>
+<header class="site-header">
+  <div class="container header-inner">
+    <a href="../" class="logo"><span class="logo-mark" aria-hidden="true"></span>My Portfolio</a>
+    <nav class="nav" aria-label="ページ内ナビゲーション"><a href="#development">Development</a><a href="#deployment">Deployment</a></nav>
+  </div>
+</header>
+<main id="article">
+  <article>
+    <div class="story-hero">
+      <div class="hero-bg" aria-hidden="true"></div>
+      <div class="container">
+        <a class="back-link" href="../#projects">← Projectsに戻る</a>
+        <p class="eyebrow">BUILD LOG / 001</p>
+        <h1>ブキ選びを、<br><span class="accent-text">Discordでルーレットに。</span></h1>
+        <p class="story-intro">Windowsでの開発から、ConoHa VPSでの常時稼働まで。<br class="desktop-break">スプラトゥーン3向けブキルーレットBotを作った記録。</p>
+        <div class="story-meta"><time datetime="2026-10-02">2026.10.02</time><span>個人開発</span><span>Discord Bot</span></div>
+        <div class="tag-list"><span class="tag">Node.js 24</span><span class="tag">TypeScript</span><span class="tag">discord.js</span><span class="tag">Ubuntu</span></div>
+      </div>
+    </div>
+    <div class="container story-body">
+      <div class="story-stats" aria-label="今回の実装の規模">
+        <div><strong>160<span>種類</span></strong><p>抽選対象のブキセット</p></div>
+        <div><strong>5<span>条件</span></strong><p>フィルターと特殊ルール</p></div>
+        <div><strong>11<span>件</span></strong><p>成功した自動テスト</p></div>
+      </div>
+      <nav class="story-toc" aria-label="目次"><span>CONTENTS</span><a href="#overview">作ったもの</a><a href="#development">Windowsで開発</a><a href="#panel">条件パネル</a><a href="#deployment">VPSで常時稼働</a><a href="#lessons">学んだこと</a></nav>
+      <section id="overview" class="story-section">
+        <h2 class="section-title"><span class="section-num">01</span>VCのメンバーに、ブキを割り当てる</h2>
+        <p>一緒に遊ぶメンバーのブキを、その場でランダムに決めたい。そんな使い方を想定して、Discord上で操作できるブキルーレットBotを作りました。</p>
+        <p><code>/roulette</code>を実行すると、参加中のボイスチャンネル（VC）からメンバーを取得。条件を選んで抽選すると、各メンバーにブキを1つずつ割り当てます。対象はBotを除く1〜25人で、再抽選でも最初に取得したメンバーを使います。</p>
+        <div class="story-note"><strong>ブキデータについて</strong><p><a href="https://stat.ink/api/v3/weapon" target="_blank" rel="noopener">stat.inkの公開API</a>から取得した日本語データを保存して利用しています。コラボ・デコなどのセット違いは含み、性能が同じ外見違いのレプリカは除外。取得時点の抽選対象は160種類です。抽選のたびに外部APIへ接続する必要はありません。</p></div>
+      </section>
+      <section id="development" class="story-section">
+        <h2 class="section-title"><span class="section-num">02</span>まずはWindowsで、Pongまで</h2>
+        <p>Windows 11とPowerShell、Node.js 24を使って開発を開始。TypeScript・discord.js・dotenvをnpmで導入し、ソースを<code>src</code>、ビルド結果を<code>dist</code>に分けました。</p>
+        <div class="story-table-wrap"><table><caption>開発環境の構成</caption><tbody><tr><th scope="row">言語 / 実行環境</th><td>TypeScript / Node.js 24</td></tr><tr><th scope="row">Discord連携</th><td>discord.js</td></tr><tr><th scope="row">環境変数</th><td>dotenv / 環境ごとの.env</td></tr><tr><th scope="row">パッケージ管理</th><td>npm / package-lock.json</td></tr><tr><th scope="row">ソース管理</th><td>Git / GitHub</td></tr></tbody></table></div>
+        <pre><code>npm run dev     # 開発実行・変更時に再起動
+npm run build   # TypeScriptをdistへビルド
+npm start       # ビルド済みコードを実行</code></pre>
+        <p>最初は接続確認用の<code>/ping</code>だけを実装しました。Discordで「Pong! Botは正常に動作しています。」が返ることを確認してから、抽選機能へ進みました。</p>
+        <details><summary>開発中につまずいたこと</summary><div><h3>PowerShellからnpmが見つからない</h3><p>Node.js導入後も、開いていたPowerShellにはPATHが反映されていませんでした。Node.jsの配置を確認し、PATHを更新して<code>npm.cmd</code>で実行しました。</p><h3>Botはオンラインなのに、コマンドが出ない</h3><p>ログインとスラッシュコマンドの登録は別の処理です。Application IDとサーバーIDを.envに設定し、登録用scriptを実行して解決しました。</p><h3>「アプリケーションが応答しませんでした」</h3><p>コード更新中にBot本体が停止し、監視プロセスだけが残っていました。開発実行を再起動し、ログイン成功を確認してから抽選を試しました。</p></div></details>
+      </section>
+      <section id="panel" class="story-section">
+        <h2 class="section-title"><span class="section-num">03</span>一発抽選から、条件設定パネルへ</h2>
+        <p>最初は1つのブキを抽選するだけの機能でした。ブキ種の指定を追加した後、複数の条件を組み合わせられるパネル方式に拡張しました。</p>
+        <div class="panel-example" aria-label="条件設定パネルの表示イメージ">
+          <div class="panel-example-header"><span class="sample-label">UI SAMPLE / 表示イメージ</span><strong>🎰 ブキルーレット 条件設定</strong></div>
+          <p>対象メンバー：4人<br>メンバーA / メンバーB / メンバーC / メンバーD</p>
+          <dl><div><dt>ブキ種</dt><dd>シューター / マニューバー</dd></div><div><dt>射程</dt><dd>短射程</dd></div><div><dt>サブ・スペシャル</dt><dd>指定なし</dd></div><div><dt>特殊ルール</dt><dd>全員違うブキ</dd></div></dl>
+          <div class="sample-menus" aria-hidden="true"><span>ブキ種 ⌄</span><span>射程 ⌄</span><span>サブ ⌄</span><span>スペシャル ⌄</span><span>特殊ルール ⌄</span></div>
+          <div class="sample-actions" aria-hidden="true"><span>🎲 抽選する</span><span>条件リセット</span></div>
+          <p class="sample-caption">実際の操作はDiscord上で行います。</p>
+        </div>
+        <h3>同じ条件の中はOR、条件同士はAND</h3>
+        <p>ブキ種・射程・サブ・スペシャルは複数選択できます。「シューター、マニューバー」と「短射程」を選んだ場合は、どちらかのブキ種に属し、かつ短射程のブキが候補になります。指定していない項目は絞り込みません。</p>
+        <p class="formula">（シューター OR マニューバー）<br><span>AND</span> 短射程</p>
+        <p>射程はstat.inkの数値<code>matching_range</code>を基に、15未満を短射程、15以上22未満を中射程、22以上を長射程と分類しています。公式の区分ではなく、Bot側で調整できる独自の基準です。</p>
+        <h3>編成全体に適用する特殊ルール</h3>
+        <ul class="rule-list"><li><strong>なし</strong><span>候補から各メンバーのブキを抽選。</span></li><li><strong>全員違うブキ</strong><span>同じブキセットが重複しないように抽選。</span></li><li><strong>全員違うブキ種</strong><span>メンバーごとに異なるブキ種を割り当て。</span></li><li><strong>全員同じブキ種</strong><span>ブキ種を1つ選び、その中で各メンバーのブキを抽選。</span></li></ul>
+        <p>候補が0件、または人数に対してブキやブキ種が足りない場合は、抽選前に理由を表示します。「同じ条件で再抽選」と「条件を変更」のボタンで、結果を見てから調整できます。</p>
+        <div class="story-note"><strong>状態は、必要な間だけ</strong><p>DBや永続的なユーザーデータは使いません。パネルごとにメモリ上で状態を分け、実行者だけが操作できるようにしました。操作から30分で期限切れになり、Bot再起動後は新しいパネルを開きます。</p></div>
+      </section>
+      <section id="deployment" class="story-section">
+        <h2 class="section-title"><span class="section-num">04</span>ConoHa VPSへ、動かす場所を移す</h2>
+        <p>開発中はWindowsのターミナルでBotを動かしていました。常時稼働に向けて、GitHubへソースを保存し、ConoHa VPSのUbuntuに配置しました。</p>
+        <div class="deployment-flow" aria-label="Windowsで開発、GitHubで管理、ConoHa VPSで実行">
+          <div><span>01 / DEVELOP</span><strong>Windows 11</strong><p>PowerShell<br>Node.js 24 / TypeScript</p></div><span class="flow-arrow" aria-hidden="true">→</span><div><span>02 / VERSION</span><strong>GitHub</strong><p>ソース・設定<br>package-lock.json</p></div><span class="flow-arrow" aria-hidden="true">→</span><div><span>03 / RUN</span><strong>ConoHa VPS</strong><p>Ubuntu 24.04 LTS<br>Node.js 24 / systemd</p></div>
+        </div>
+        <p>VPSにはもともとNode.js 22が入っていたため、Bot用のNode.js 24を別の場所に導入。専用の実行ユーザーを作り、開発環境のnode_modulesをコピーせず、VPS上で依存パッケージをインストールしました。</p>
+        <ol class="deployment-steps"><li><strong>GitHubからclone</strong><p>コードとpackage-lock.jsonを取得し、開発・本番で同じ依存バージョンを使える構成に。</p></li><li><strong>npm ciで導入、テストとビルド</strong><p>TypeScriptのビルドに必要な開発依存も導入。VPS上でも11件のテストが成功しました。</p></li><li><strong>本番用.envを作成</strong><p>開発用とは別に環境変数を管理。.envはGitに含めず、秘密情報をコードへ直接書きません。</p></li><li><strong>systemdのサービスを有効化</strong><p>起動時の作業ディレクトリ、Node.jsの絶対パス、専用ユーザーを指定。VPS起動時の自動起動と、異常終了時の再起動を設定しました。</p></li></ol>
+        <pre><code>systemctl status spl3-roulette-bot --no-pager
+journalctl -u spl3-roulette-bot -n 30 --no-pager</code></pre>
+        <div class="deployment-result"><span class="result-dot" aria-hidden="true"></span><div><strong>VPS上で active (running) を確認</strong><p>11件のテスト成功と、サービスの自動起動設定を確認しました。起動直後の状態に加え、運用時はログイン成功のログとDiscord上の応答を確認します。</p></div></div>
+        <p>このWebページはConoHa WINGに静的ファイルとして公開し、Bot本体はConoHa VPSで動かす構成です。BotをVPSへ移すことで、Windowsの開発PCやSSH接続を開いたままにする必要がなくなります。</p>
+      </section>
+      <section id="lessons" class="story-section">
+        <h2 class="section-title"><span class="section-num">05</span>今回の開発で学んだこと</h2>
+        <div class="lesson-grid"><div><span>DESIGN</span><h3>UIと抽選ロジックを分ける</h3><p>Discordの画面処理と、条件の絞り込み・抽選を分離。特殊ルールを追加しやすく、テストでも結果を確認できる構造になりました。</p></div><div><span>OPERATIONS</span><h3>起動と運用は別の作業</h3><p>ローカルで動くだけでなく、ログ・自動起動・異常終了後の再起動まで用意。systemdでBotの実行を管理する形にしました。</p></div><div><span>PORTABILITY</span><h3>環境ごとに準備する</h3><p>コードは共通化し、依存パッケージと.envはそれぞれの環境で準備。Windowsで開発してUbuntuで動かす流れを作れました。</p></div></div>
+        <div class="story-closing"><p>ソースコードと、配置・更新の手順をGitHubにまとめています。</p><a class="btn" href="https://github.com/kai20020918/spl3_roulette_bot" target="_blank" rel="noopener">GitHubでコードを見る <span aria-hidden="true">↗</span></a><a class="back-link" href="../#projects">他の作品を見る →</a></div>
+        <p class="story-disclaimer">個人制作の非公式Botです。スプラトゥーン3は任天堂のゲーム作品です。本ページは任天堂と提携・関係するものではありません。</p>
+      </section>
+    </div>
+  </article>
+</main>
+<footer class="site-footer"><div class="container"><p>&copy; 2026 My Portfolio</p></div></footer>
+</body>
+</html>

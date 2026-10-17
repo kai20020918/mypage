@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#09090b">
+<meta name="description" content="スプラトゥーン3のプライベートマッチ募集を管理するDiscord Botの開発記録。Gemini APIによる参加意思の判定、運用しながら追加した締切・引き継ぎ・手動追加、ConoHa VPSのUbuntuとsystemdによる常時稼働まで。">
+<title>プラベ募集Bot 開発記録 | My Portfolio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/style.css?v=20261017">
+<link rel="stylesheet" href="../css/roulette-story.css?v=20261017">
+</head>
+<body class="story-page">
+<a class="skip-link" href="#article">本文へ移動</a>
+<header class="site-header">
+  <div class="container header-inner">
+    <a href="../" class="logo"><span class="logo-mark" aria-hidden="true"></span>My Portfolio</a>
+    <nav class="nav" aria-label="ページ内ナビゲーション"><a href="#ai">AI Judge</a><a href="#updates">Updates</a><a href="#deployment">Deployment</a></nav>
+  </div>
+</header>
+<main id="article">
+  <article>
+    <div class="story-hero">
+      <div class="hero-bg" aria-hidden="true"></div>
+      <div class="container">
+        <a class="back-link" href="../#projects">← Projectsに戻る</a>
+        <p class="eyebrow">BUILD LOG / 002</p>
+        <h1>「ノ」のひとことで、<br><span class="accent-text">プラベに参加登録。</span></h1>
+        <p class="story-intro">チャットの参加表明をAIが読み取り、参加者リストを自動で管理。<br class="desktop-break">スプラトゥーン3のプライベートマッチ募集Botを作った記録。</p>
+        <div class="story-meta"><time datetime="2026-10-03">2026.10.03</time><span>更新 <time datetime="2026-10-17">2026.10.17</time></span><span>個人開発</span><span>Discord Bot</span></div>
+        <div class="tag-list"><span class="tag">Python</span><span class="tag">discord.py</span><span class="tag">Gemini API</span><span class="tag">SQLite</span><span class="tag">Ubuntu</span></div>
+      </div>
+    </div>
+    <div class="container story-body">
+      <div class="story-stats" aria-label="今回の実装の規模">
+        <div><strong>3<span>方式</span></strong><p>選べる参加方法</p></div>
+        <div><strong>1<span>GB</span></strong><p>メモリのVPSで常時稼働</p></div>
+        <div><strong>101<span>件</span></strong><p>成功した自動テスト</p></div>
+      </div>
+      <nav class="story-toc" aria-label="目次"><span>CONTENTS</span><a href="#overview">作ったもの</a><a href="#ai">AIで参加判定</a><a href="#safety">間違えても直せる設計</a><a href="#updates">運用して足した機能</a><a href="#deployment">VPSで常時稼働</a><a href="#lessons">学んだこと</a></nav>
+
+      <section id="overview" class="story-section">
+        <h2 class="section-title"><span class="section-num">01</span>募集と参加者の管理を、Botに任せる</h2>
+        <p>Discordでプラベの参加者を募ると、「ノ」「行きます」といった返信を見ながら、誰が参加するのかを手で数えることになります。途中で抜ける人や、後から入る人がいると、さらに追いにくくなります。そこで、募集の作成から参加者リストの更新までを行うBotを作りました。</p>
+        <p><code>/プラベ</code>を実行すると、Botが募集メッセージを投稿します。参加者が増減するたびに新しいメッセージは送らず、同じメッセージを書き換えて最新の状態を表示します。</p>
+        <div class="panel-example" aria-label="募集メッセージの表示イメージ">
+          <div class="panel-example-header"><span class="sample-label">UI SAMPLE / 表示イメージ</span><strong>🎮 プラベ募集</strong></div>
+          <p>⏰ 21:00～<br>⏳ 締切 10/17(土) 20:30<br>👥 参加者 4/8<br>・メンバーA<br>・メンバーB<br>・メンバーC<br>・ゲストD（新規）</p>
+          <dl><div><dt>参加方法</dt><dd>ボタン、またはチャットで「ノ」「行く」などと発言</dd></div><div><dt>取り消し</dt><dd>「参加取消」ボタン / 発言 / <code>/取消</code></dd></div></dl>
+          <div class="sample-actions" aria-hidden="true"><span>🙋 参加する</span><span>参加取消</span></div>
+          <p class="sample-caption">実際の操作はDiscord上で行います。</p>
+        </div>
+        <h3>参加方法は、募集ごとに3種類から選ぶ</h3>
+        <ul class="rule-list"><li><strong>ボタン</strong><span>「参加する」「参加取消」ボタンで登録。AIを使わないので、確実で料金もかからない。</span></li><li><strong>メッセージ</strong><span>チャットの発言をAIが判定して登録。普段どおりの返信で参加できる。</span></li><li><strong>両方</strong><span>ボタンと発言のどちらでも参加できる。</span></li></ul>
+        <p>定員（2〜10人）、開始時間、タイトル、締切時刻も指定できます。募集した人は、自動で参加者に入ります。締切を過ぎると募集は自動で【終了】になり、ボタンも消えます（締切を指定しない場合は、作成から6時間で終了）。</p>
+      </section>
+
+      <section id="ai" class="story-section">
+        <h2 class="section-title"><span class="section-num">02</span>「行く」の書き方は、人それぞれ</h2>
+        <p>参加の意思表示は「ノ」「いきたい」「まだ空いてたら俺も行こうかな」など、人によってさまざまです。決まった単語だけで判定すると取りこぼしが出ますし、逆に「行きたいけど今日は無理」を参加扱いにしてしまいます。そこで、発言の判定にGemini APIを使いました。</p>
+        <div class="story-table-wrap"><table><caption>判定の例</caption><tbody><tr><th scope="row">「ノ」「いきたい」</th><td>JOIN（参加）</td></tr><tr><th scope="row">「まだ空いてたら俺も行こうかな」</th><td>JOIN（参加）</td></tr><tr><th scope="row">「ごめんやっぱ無理」</th><td>LEAVE（取り消し）</td></tr><tr><th scope="row">「行きたいけど今日は無理」</th><td>NONE（何もしない）</td></tr><tr><th scope="row">「あと何人？」</th><td>NONE（質問）</td></tr><tr><th scope="row">「○○さん行くの？」</th><td>NONE（他の人の話）</td></tr></tbody></table></div>
+        <h3>自由な文章ではなく、決まった形で答えさせる</h3>
+        <p>Geminiには文章で答えさせず、JSON Schemaで形式を指定した構造化出力を使いました。受け取った値もそのまま信用せず、Python側でもう一度検証します。形式が違う、値が範囲外、タイムアウトした、といった場合はすべて「何もしない」として扱います。</p>
+        <pre><code>{
+  "action": "JOIN",      // JOIN / LEAVE / NONE
+  "confidence": 0.95     // 0.0〜1.0
+}</code></pre>
+        <h3>直前の会話も一緒に渡す</h3>
+        <p>1つの発言だけでは判断できない場面もあります。</p>
+        <p class="formula">A：何時から？<br>B：21時<br>A：なら行く <span>→ JOIN</span></p>
+        <p>このような流れを読み取れるように、直前の発言を最大5件（10分以内）まで判定材料として渡しています。API料金とプライバシーを考え、それ以上の履歴は送りません。</p>
+        <div class="story-note"><strong>名前は送らない</strong><p>Geminiに送る会話では、発言者の名前やIDを「TARGET」「U1」のような仮の名前に置き換えています。ログにもメッセージ本文は残さず、記録するのは判定結果とIDだけです。</p></div>
+      </section>
+
+      <section id="safety" class="story-section">
+        <h2 class="section-title"><span class="section-num">03</span>AIが間違えても、人が直せる</h2>
+        <p>AIの判定は必ずどこかで間違えます。そこで、「勝手に参加させない」ことと「間違えたらすぐ直せる」ことを優先して設計しました。</p>
+        <ul class="rule-list"><li><strong>迷ったら何もしない</strong><span>確信度が0.85未満の判定は反映しない。曖昧な発言、質問、雑談、他の人についての話は参加扱いにしない。</span></li><li><strong>判定結果を見せる</strong><span>参加として処理した発言に✅、取り消しには👋、満員のときは🈵のリアクションをBotが付ける。</span></li><li><strong>手で直せる</strong><span>参加取消ボタンや<code>/取消</code>で修正できる。募集者は、他の人の誤登録も取り消せる。</span></li></ul>
+        <h3>1つのチャンネルに、AI判定の募集は1件まで</h3>
+        <p>同じチャンネルに募集が2つあると、「行く」がどちらへの返事なのか分かりません。スレッドを使って分ける方法も考えましたが、まずは仕組みをシンプルにするため、メッセージ方式の募集は1チャンネル1件までにしました。ボタン方式はボタンが募集ごとに分かれているので、いくつ作っても混ざりません。</p>
+        <div class="story-note"><strong>同時に押されても壊れない</strong><p>何人かが同時にボタンを押しても定員を超えないよう、募集ごとにロックをかけて処理しています。さらに、データベース（SQLite）の制約でも二重登録を防いでいます。20人が同時に参加しようとして、定員ちょうどで締まることを自動テストで確認しました。</p></div>
+      </section>
+
+      <section id="updates" class="story-section">
+        <h2 class="section-title"><span class="section-num">04</span>使ってもらって、足した機能</h2>
+        <p>公開後も、実際に募集で使いながら気になった点を直し、機能を足していきました。追加したものをまとめます。</p>
+        <ul class="rule-list"><li><strong>名前で表示</strong><span>参加者を<code>&lt;@ID&gt;</code>のメンションで並べていたところ、見る人の環境によってはIDのまま表示されていた。Botがサーバー内の表示名を取得して、文字列として埋め込むように変更。Members Intentは使わず、取得した名前は数分間キャッシュしてAPI呼び出しを抑えている。</span></li><li><strong>締切を時刻で</strong><span><code>/プラベ</code>の「締切」に「22:30」のような日本時間の時刻を指定できるようにした。<code>/締切</code>で今すぐ締め切ったり、締切時刻を変えたりもできる。</span></li><li><strong>/引き継ぎ</strong><span>誤って締め切った募集の参加者を、参加順のまま新しい募集へ移す。定員を超える分は追加せず、追加できなかった人を結果に表示する。</span></li><li><strong>/追加</strong><span>募集者が参加者を手動で追加できる。サーバーにいない人（Xのフォロワーなど）も、名前だけのゲストとして登録でき、募集には「名前（新規）」と表示される。</span></li></ul>
+        <h3>締切は「人が書きそうな形」で受け付ける</h3>
+        <p>締切の入力は自由入力にして、よく使う書き方をまとめて解釈するようにしました。全角の数字や記号も半角に揃えてから読み取ります。</p>
+        <div class="story-table-wrap"><table><caption>締切の入力例</caption><tbody><tr><th scope="row">「22:30」「22時30分」「２２：３０」</th><td>今日の22:30</td></tr><tr><th scope="row">「0:30」（今日はもう過ぎている）</th><td>翌日の0:30</td></tr><tr><th scope="row">「10/18 22:30」</th><td>10月18日の22:30</td></tr><tr><th scope="row">8日後の日時</th><td>エラー（7日以内のみ）</td></tr></tbody></table></div>
+        <p>締切を過ぎた参加操作はその場で受け付けず、募集メッセージは1分ごとの確認で【終了】に切り替わります。</p>
+        <div class="story-note"><strong>動いているデータを壊さずに足す</strong><p>締切とゲストのために、データベースへ列を2つ追加しました。SQLiteの<code>user_version</code>でスキーマのバージョンを管理し、Botの起動時に足りない分だけ自動で移行します。VPSでは<code>git pull</code>して再起動するだけで、募集中のデータもそのまま使えます。ゲストには負の数の内部IDを割り当て、DiscordのユーザーIDとは絶対に重ならないようにしました。自動テストも55件から101件に増やしています。</p></div>
+      </section>
+
+      <section id="deployment" class="story-section">
+        <h2 class="section-title"><span class="section-num">05</span>メモリ1GBのVPSで、常時稼働させる</h2>
+        <p>開発はWindowsで行い、GitHubを経由して、ConoHa VPSのUbuntuで動かしています。VPSのメモリは1GBしかないため、Dockerは使わず、Pythonを直接systemdで動かす構成にしました。</p>
+        <div class="deployment-flow" aria-label="Windowsで開発、GitHubで管理、ConoHa VPSで実行">
+          <div><span>01 / DEVELOP</span><strong>Windows 11</strong><p>PowerShell<br>Python / venv</p></div><span class="flow-arrow" aria-hidden="true">→</span><div><span>02 / VERSION</span><strong>GitHub</strong><p>ソース・手順書<br>requirements.txt</p></div><span class="flow-arrow" aria-hidden="true">→</span><div><span>03 / RUN</span><strong>ConoHa VPS</strong><p>Ubuntu<br>Python / systemd</p></div>
+        </div>
+        <p>メモリを節約するため、Discordのメッセージやメンバー情報をBot側に溜め込まない設定にしています。AIの判定に使う直前の会話も、募集中のチャンネルごとに5件だけ保持します。</p>
+        <ol class="deployment-steps"><li><strong>GitHubからclone</strong><p>VPS上でvenvを作り、バージョンを固定した依存パッケージをインストール。</p></li><li><strong>秘密情報はGitの外に置く</strong><p>DiscordのトークンとGemini APIのキーは、権限を絞った設定ファイルに保存し、systemdから読み込む。</p></li><li><strong>専用ユーザーで実行</strong><p>rootでは動かさない。Botが書き込めるのはデータベースのフォルダだけに制限。</p></li><li><strong>systemdで自動起動・再起動</strong><p>VPSの起動時に自動で立ち上がり、異常終了しても再起動する。メモリ使用量にも上限を設定。</p></li></ol>
+        <pre><code>systemctl status splatoon-recruit-bot
+journalctl -u splatoon-recruit-bot -f</code></pre>
+        <div class="deployment-result"><span class="result-dot" aria-hidden="true"></span><div><strong>VPS上で active (running) を確認</strong><p>Discord上で募集の作成、ボタンでの参加、発言からのAI判定が動くことを確認しました。更新は、GitHubにpushしてVPSで<code>git pull</code>し、サービスを再起動するだけです。</p></div></div>
+        <details><summary>開発中につまずいたこと</summary><div><h3>コマンド登録で「Missing Access」</h3><p>ログインは成功したのに、スラッシュコマンドの登録で403エラーになりました。指定したサーバーIDとBotの招待設定を見直して解決しました。原因が分かりやすいよう、このエラーのときは確認すべき点をログに出すようにしています。</p><h3>Message Content Intentが無効</h3><p>発言の内容を読むには、Discord Developer Portalで特別な権限（Intent）を有効にする必要がありました。ボタン方式だけで使う場合はこの権限を要求しないようにして、必要な権限を最小限にしています。</p><h3>公開リポジトリにメールアドレス</h3><p>コミットに個人のメールアドレスが記録されていました。GitHubの非公開用アドレスに書き換えて、履歴を置き換えました。</p></div></details>
+      </section>
+
+      <section id="lessons" class="story-section">
+        <h2 class="section-title"><span class="section-num">06</span>今回の開発で学んだこと</h2>
+        <div class="lesson-grid"><div><span>AI</span><h3>AIの出力は、入力として扱う</h3><p>形式を指定したうえで、受け取った値をもう一度検証。失敗したときに安全な結果になるよう、先に決めておくことが大切でした。</p></div><div><span>DESIGN</span><h3>間違える前提で作る</h3><p>判定を目に見える形にし、人が直す手段を用意する。精度を上げるよりも、間違えたときに困らない作りを優先しました。</p></div><div><span>OPERATIONS</span><h3>小さなサーバーに合わせる</h3><p>キャッシュを減らし、データはSQLiteの1ファイルに。メモリが1GBのVPSでも動かしやすい構成にしました。</p></div></div>
+        <div class="story-closing"><p>ソースコードと、セットアップ・デプロイの手順をGitHubにまとめています。</p><a class="btn" href="https://github.com/kai20020918/spl3_private_bot" target="_blank" rel="noopener">GitHubでコードを見る <span aria-hidden="true">↗</span></a><a class="back-link" href="../#projects">他の作品を見る →</a></div>
+        <p class="story-disclaimer">個人制作の非公式Botです。スプラトゥーン3は任天堂のゲーム作品です。本ページは任天堂と提携・関係するものではありません。</p>
+      </section>
+    </div>
+  </article>
+</main>
+<footer class="site-footer"><div class="container"><p>&copy; 2026 My Portfolio</p></div></footer>
+</body>
+</html>

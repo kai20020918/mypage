@@ -1,0 +1,12 @@
+# 秘密鍵などは絶対にコミットしない
+*.pem
+*.key
+id_*
+.env
+
+# OS / エディタ
+Thumbs.db
+desktop.ini
+.DS_Store
+.vscode/
+.idea/
